@@ -76,7 +76,8 @@ class HTMLParser:
         
         # Skip if element has no text content
         text_content = self._get_clean_text(element)
-        if not text_content or len(text_content.strip()) < 3:  # Reduced from 10 to 3 characters minimum
+        # Further reduced minimum length to capture short Ukrainian words like "ми", "він", "він", etc.
+        if not text_content or len(text_content.strip()) < 2:  # Reduced to 2 characters for Ukrainian
             return text_blocks
         
         # Determine element type and hierarchy level
@@ -86,7 +87,7 @@ class HTMLParser:
         if element.name == 'ul' or element.name == 'ol':
             for li in element.find_all('li', recursive=False):
                 li_text = self._get_clean_text(li)
-                if li_text and len(li_text.strip()) >= 5:
+                if li_text and len(li_text.strip()) >= 2:  # Reduced for Ukrainian words
                     self.position_counter += 1
                     text_blocks.append({
                         'text': li_text.strip(),

@@ -31,7 +31,9 @@ class RAGPipeline:
         embedding_model: str = "paraphrase-multilingual-mpnet-base-v2",
         collection_name: str = "html_documents",
         persist_directory: str = "./chroma_db",
-        max_chunk_size: int = 512
+        max_chunk_size: int = 512,
+        prefer_basic_cleaning: bool = False,
+        cyrillic_detection_threshold: float = 0.2
     ):
         """
         Initialize the RAG pipeline with all components.
@@ -42,8 +44,12 @@ class RAGPipeline:
             collection_name: ChromaDB collection name
             persist_directory: Directory to persist ChromaDB
             max_chunk_size: Maximum characters per text chunk
+            prefer_basic_cleaning: If True, default to basic cleaning over AI model
+            cyrillic_detection_threshold: Threshold for Cyrillic content detection (0.0-1.0)
         """
         self.max_chunk_size = max_chunk_size
+        self.prefer_basic_cleaning = prefer_basic_cleaning
+        self.cyrillic_detection_threshold = cyrillic_detection_threshold
         
         # Initialize all pipeline components
         logger.info("Initializing RAG pipeline components...")
@@ -68,7 +74,45 @@ class RAGPipeline:
         
         logger.info("RAG pipeline initialized successfully")
     
-    def process_html(self, raw_html: str, url: str = "", wayback_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def _detect_cyrillic_content(self, html_content: str) -> bool:
+        """
+        Detect if HTML content contains significant Cyrillic/Ukrainian text.
+        
+        Args:
+            html_content: Raw HTML content to analyze
+            
+        Returns:
+            True if significant Cyrillic content is detected
+        """
+        try:
+            # Count Cyrillic characters (Ukrainian, Russian, etc.)
+            cyrillic_count = 0
+            latin_count = 0
+            
+            # Sample first 2000 characters for performance
+            sample_text = html_content[:2000]
+            
+            for char in sample_text:
+                if '\u0400' <= char <= '\u04FF':  # Cyrillic Unicode range
+                    cyrillic_count += 1
+                elif 'a' <= char.lower() <= 'z':  # Latin characters
+                    latin_count += 1
+            
+            total_letters = cyrillic_count + latin_count
+            if total_letters == 0:
+                return False
+            
+            # Use configurable threshold for Cyrillic content detection
+            cyrillic_ratio = cyrillic_count / total_letters
+            logger.debug(f"Cyrillic detection: {cyrillic_count}/{total_letters} letters ({cyrillic_ratio:.2%})")
+            
+            return cyrillic_ratio > self.cyrillic_detection_threshold
+            
+        except Exception as e:
+            logger.warning(f"Error in Cyrillic detection: {e}")
+            return False
+    
+    def process_html(self, raw_html: str, url: str = "", wayback_metadata: Optional[Dict[str, Any]] = None, force_basic_cleaning: bool = False) -> Dict[str, Any]:
         """
         Process raw HTML through the complete pipeline.
         
@@ -76,6 +120,7 @@ class RAGPipeline:
             raw_html: Raw HTML content
             url: Source URL of the HTML content
             wayback_metadata: Optional Wayback Machine metadata
+            force_basic_cleaning: If True, forces basic HTML cleaning instead of AI model
             
         Returns:
             Dictionary with processing results and statistics
@@ -88,8 +133,33 @@ class RAGPipeline:
             logger.info("Stage 1: HTML Pruning...")
             stage1_start = time.time()
             
-            # For wayback content, prefer basic cleaning to avoid AI model issues
-            use_ai_model = wayback_metadata is None  # Use AI only for non-wayback content
+            # SMART DECISION LOGIC: Determine whether to use AI model or basic cleaning
+            # Priority order:
+            # 1. force_basic_cleaning parameter overrides everything
+            # 2. prefer_basic_cleaning configuration setting
+            # 3. Wayback content → basic cleaning (preserve Ukrainian/non-English)
+            # 4. Cyrillic content detection → basic cleaning
+            # 5. Default → AI model for English content
+            
+            if force_basic_cleaning:
+                use_ai_model = False
+                logger.info("Forced basic cleaning: Using basic HTML cleaning (force_basic_cleaning=True)")
+            elif self.prefer_basic_cleaning:
+                use_ai_model = False
+                logger.info("Pipeline configured for basic cleaning: Using basic HTML cleaning (prefer_basic_cleaning=True)")
+            elif wayback_metadata is not None:
+                # Wayback content detected → Use basic cleaning to preserve Ukrainian text
+                use_ai_model = False
+                logger.info("Wayback metadata detected: Using basic HTML cleaning to preserve Ukrainian/non-English content")
+            elif self._detect_cyrillic_content(raw_html):
+                # Cyrillic content detected → Use basic cleaning
+                use_ai_model = False
+                logger.info("Cyrillic/Ukrainian content detected: Using basic HTML cleaning to preserve non-English text")
+            else:
+                # Regular English content → Can use AI model
+                use_ai_model = True
+                logger.info("English content detected: Using AI model for HTML pruning")
+            
             cleaned_html = self.html_pruner.prune_html(raw_html, use_ai_model=use_ai_model)
             stage1_time = time.time() - stage1_start
             
@@ -183,12 +253,13 @@ class RAGPipeline:
                 'url': url
             }
     
-    def process_multiple_html(self, html_documents: List[Dict[str, str]]) -> List[Dict[str, Any]]:
+    def process_multiple_html(self, html_documents: List[Dict[str, str]], force_basic_cleaning: bool = False) -> List[Dict[str, Any]]:
         """
         Process multiple HTML documents.
         
         Args:
             html_documents: List of dictionaries with 'html' and 'url' keys
+            force_basic_cleaning: If True, forces basic cleaning for all documents
             
         Returns:
             List of processing results
@@ -202,7 +273,8 @@ class RAGPipeline:
             result = self.process_html(
                 doc['html'], 
                 doc.get('url', f'document_{i}'),
-                wayback_metadata
+                wayback_metadata,
+                force_basic_cleaning
             )
             results.append(result)
         
@@ -258,7 +330,7 @@ class RAGPipeline:
         """
         return self.vector_store.filter_by_metadata(metadata_filter, limit)
     
-    def process_wayback_snapshots(self, snapshots_directory: str, require_metadata: bool = False, **filter_kwargs) -> List[Dict[str, Any]]:
+    def process_wayback_snapshots(self, snapshots_directory: str, require_metadata: bool = False, force_basic_cleaning: bool = True, **filter_kwargs) -> List[Dict[str, Any]]:
         """
         Process Wayback Machine snapshots from a directory (Stage 0 + Stages 1-4).
         
@@ -266,6 +338,7 @@ class RAGPipeline:
             snapshots_directory: Path to directory containing wayback snapshots
             require_metadata: If True, only process HTML files with meta.json files
                             If False, process all HTML files (creates synthetic metadata for files without meta.json)
+            force_basic_cleaning: If True, forces basic cleaning for all wayback content (recommended for Ukrainian)
             **filter_kwargs: Optional filtering criteria (domain_filter, year_filter, min_content_length)
             
         Returns:
@@ -304,7 +377,7 @@ class RAGPipeline:
             logger.info(f"Stage 0 completed in {stage0_time:.2f} seconds")
             
             # Process through remaining stages (1-4)
-            results = self.process_multiple_html(snapshots)
+            results = self.process_multiple_html(snapshots, force_basic_cleaning=force_basic_cleaning)
             
             # Add Stage 0 timing and metadata to results
             for result in results:
