@@ -1,5 +1,6 @@
 """
-Main RAG Pipeline that orchestrates all 4 stages:
+Main RAG Pipeline that orchestrates all 5 stages:
+0. Wayback Snapshot Processing (optional)
 1. HTML Pruning
 2. HTML Parsing  
 3. Text Embedding
@@ -11,6 +12,7 @@ from typing import List, Dict, Any, Optional, Union
 import time
 from pathlib import Path
 
+from wayback_processor import WaybackProcessor
 from html_pruner import HTMLPruner
 from html_parser import HTMLParser
 from text_embedder import TextEmbedder
@@ -46,6 +48,9 @@ class RAGPipeline:
         # Initialize all pipeline components
         logger.info("Initializing RAG pipeline components...")
         
+        # Stage 0: Wayback Processor
+        self.wayback_processor = WaybackProcessor()
+        
         # Stage 1: HTML Pruner
         self.html_pruner = HTMLPruner(model_name=html_pruner_model)
         
@@ -63,13 +68,14 @@ class RAGPipeline:
         
         logger.info("RAG pipeline initialized successfully")
     
-    def process_html(self, raw_html: str, url: str = "") -> Dict[str, Any]:
+    def process_html(self, raw_html: str, url: str = "", wayback_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Process raw HTML through the complete pipeline.
         
         Args:
             raw_html: Raw HTML content
             url: Source URL of the HTML content
+            wayback_metadata: Optional Wayback Machine metadata
             
         Returns:
             Dictionary with processing results and statistics
@@ -81,7 +87,10 @@ class RAGPipeline:
             # Stage 1: HTML Pruning
             logger.info("Stage 1: HTML Pruning...")
             stage1_start = time.time()
-            cleaned_html = self.html_pruner.prune_html(raw_html)
+            
+            # For wayback content, prefer basic cleaning to avoid AI model issues
+            use_ai_model = wayback_metadata is None  # Use AI only for non-wayback content
+            cleaned_html = self.html_pruner.prune_html(raw_html, use_ai_model=use_ai_model)
             stage1_time = time.time() - stage1_start
             
             # Stage 2: HTML Parsing
@@ -89,14 +98,51 @@ class RAGPipeline:
             stage2_start = time.time()
             text_blocks = self.html_parser.parse_html(cleaned_html, url)
             
+            logger.info(f"Stage 2: Extracted {len(text_blocks)} text blocks")
+            
+            # Check if we have any text blocks
+            if not text_blocks:
+                logger.warning(f"No text blocks extracted from {url}. HTML might be empty or contain only short content.")
+                return {
+                    'success': False,
+                    'error': 'No text blocks extracted from HTML content',
+                    'url': url,
+                    'original_html_length': len(raw_html),
+                    'cleaned_html_length': len(cleaned_html)
+                }
+            
+            # Add wayback metadata to each text block if provided
+            if wayback_metadata:
+                for block in text_blocks:
+                    block.update({
+                        'wayback_timestamp': wayback_metadata.get('timestamp'),
+                        'wayback_archive_url': wayback_metadata.get('archive_url'),
+                        'wayback_original_url': wayback_metadata.get('original_url'),
+                        'wayback_domain': wayback_metadata.get('domain'),
+                        'wayback_title': wayback_metadata.get('title')
+                    })
+            
             # Chunk long texts if needed
             chunked_blocks = self.html_parser.chunk_long_text(text_blocks, self.max_chunk_size)
+            logger.info(f"Stage 2: After chunking: {len(chunked_blocks)} text blocks")
             stage2_time = time.time() - stage2_start
             
             # Stage 3: Text Embedding
             logger.info("Stage 3: Text Embedding...")
             stage3_start = time.time()
+            
+            if not chunked_blocks:
+                logger.warning(f"No chunked blocks to embed for {url}")
+                return {
+                    'success': False,
+                    'error': 'No text blocks available for embedding',
+                    'url': url,
+                    'text_blocks_count': len(text_blocks),
+                    'chunked_blocks_count': len(chunked_blocks)
+                }
+            
             embedded_blocks = self.text_embedder.embed_text_blocks(chunked_blocks)
+            logger.info(f"Stage 3: Generated embeddings for {len(embedded_blocks)} text blocks")
             stage3_time = time.time() - stage3_start
             
             # Stage 4: ChromaDB Storage
@@ -152,7 +198,12 @@ class RAGPipeline:
         
         for i, doc in enumerate(html_documents):
             logger.info(f"Processing document {i+1}/{len(html_documents)}")
-            result = self.process_html(doc['html'], doc.get('url', f'document_{i}'))
+            wayback_metadata = doc.get('wayback_metadata')
+            result = self.process_html(
+                doc['html'], 
+                doc.get('url', f'document_{i}'),
+                wayback_metadata
+            )
             results.append(result)
         
         # Summary statistics
@@ -207,6 +258,121 @@ class RAGPipeline:
         """
         return self.vector_store.filter_by_metadata(metadata_filter, limit)
     
+    def process_wayback_snapshots(self, snapshots_directory: str, require_metadata: bool = False, **filter_kwargs) -> List[Dict[str, Any]]:
+        """
+        Process Wayback Machine snapshots from a directory (Stage 0 + Stages 1-4).
+        
+        Args:
+            snapshots_directory: Path to directory containing wayback snapshots
+            require_metadata: If True, only process HTML files with meta.json files
+                            If False, process all HTML files (creates synthetic metadata for files without meta.json)
+            **filter_kwargs: Optional filtering criteria (domain_filter, year_filter, min_content_length)
+            
+        Returns:
+            List of processing results
+        """
+        try:
+            logger.info(f"Processing Wayback snapshots from: {snapshots_directory}")
+            
+            # Stage 0: Process Wayback snapshots
+            logger.info("Stage 0: Wayback Snapshot Processing...")
+            stage0_start = time.time()
+            
+            # Validate directory first
+            validation_result = self.wayback_processor.validate_snapshot_directory(snapshots_directory)
+            if not validation_result['is_valid']:
+                logger.error(f"Invalid snapshot directory: {validation_result['errors']}")
+                return [{
+                    'success': False,
+                    'error': f"Invalid snapshot directory: {'; '.join(validation_result['errors'])}",
+                    'directory': snapshots_directory
+                }]
+            
+            # Process snapshots
+            snapshots = self.wayback_processor.process_snapshots_directory(snapshots_directory, require_metadata=require_metadata)
+            
+            if not snapshots:
+                logger.warning("No snapshots found to process")
+                return []
+            
+            # Apply filters if provided
+            if filter_kwargs:
+                snapshots = self.wayback_processor.filter_snapshots_by_criteria(snapshots, **filter_kwargs)
+                logger.info(f"After filtering: {len(snapshots)} snapshots remaining")
+            
+            stage0_time = time.time() - stage0_start
+            logger.info(f"Stage 0 completed in {stage0_time:.2f} seconds")
+            
+            # Process through remaining stages (1-4)
+            results = self.process_multiple_html(snapshots)
+            
+            # Add Stage 0 timing and metadata to results
+            for result in results:
+                if result.get('success'):
+                    result['processing_times']['stage0_wayback'] = stage0_time / len(snapshots)
+                    result['wayback_processed'] = True
+            
+            # Add summary statistics
+            wayback_stats = self.wayback_processor.get_processing_stats()
+            logger.info(f"Wayback processing summary: {wayback_stats}")
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"Error processing wayback snapshots: {e}")
+            return [{
+                'success': False,
+                'error': str(e),
+                'directory': snapshots_directory
+            }]
+    
+    def validate_wayback_directory(self, directory_path: str) -> Dict[str, Any]:
+        """
+        Validate a Wayback snapshots directory.
+        
+        Args:
+            directory_path: Path to the snapshots directory
+            
+        Returns:
+            Dictionary with validation results
+        """
+        return self.wayback_processor.validate_snapshot_directory(directory_path)
+    
+    def search_wayback_snapshots(
+        self, 
+        query: str, 
+        n_results: int = 10,
+        timestamp_filter: Optional[str] = None,
+        domain_filter: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Search specifically for Wayback snapshot content.
+        
+        Args:
+            query: Search query
+            n_results: Number of results to return
+            timestamp_filter: Filter by specific timestamp (YYYYMMDDHHMMSS)
+            domain_filter: Filter by domain
+            
+        Returns:
+            List of relevant Wayback snapshot documents
+        """
+        # Build metadata filter for wayback content
+        metadata_filter = {}
+        
+        if timestamp_filter:
+            metadata_filter['wayback_timestamp'] = timestamp_filter
+        
+        if domain_filter:
+            metadata_filter['wayback_domain'] = domain_filter
+        
+        # Search with metadata filter
+        try:
+            return self.search(query, n_results, metadata_filter)
+        except Exception as e:
+            logger.warning(f"Wayback-specific search failed, falling back to normal search: {e}")
+            return self.search(query, n_results)
+    
     def get_pipeline_stats(self) -> Dict[str, Any]:
         """
         Get statistics about the pipeline and database.
@@ -219,6 +385,7 @@ class RAGPipeline:
                 'vector_store': self.vector_store.get_collection_stats(),
                 'embedding_model': self.text_embedder.get_model_info(),
                 'html_pruner_model': self.html_pruner.model_name,
+                'wayback_processor': 'Available',
                 'max_chunk_size': self.max_chunk_size
             }
             return stats

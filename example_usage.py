@@ -1,8 +1,10 @@
 """
-Example usage of the RAG Pipeline with sample HTML content
+Example usage of the RAG Pipeline with Wayback Machine snapshots
 """
 
 import logging
+import os
+from pathlib import Path
 from rag_pipeline import RAGPipeline
 
 # Set up logging
@@ -11,227 +13,184 @@ logger = logging.getLogger(__name__)
 
 
 def main():
-    """Demonstrate the RAG pipeline with sample HTML content."""
-    
-    # Sample HTML content for testing
-    sample_html_1 = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Machine Learning Fundamentals</title>
-        <style>
-            body { font-family: Arial, sans-serif; }
-            .highlight { background-color: yellow; }
-        </style>
-        <script>
-            function highlightText() {
-                console.log("Highlighting text");
-            }
-        </script>
-    </head>
-    <body>
-        <h1>Introduction to Machine Learning</h1>
-        <p>Machine learning is a subset of artificial intelligence that focuses on the development of algorithms and statistical models that enable computer systems to improve their performance on a specific task through experience.</p>
-        
-        <h2>Types of Machine Learning</h2>
-        <p>There are three main types of machine learning:</p>
-        <ul>
-            <li>Supervised Learning: Uses labeled training data to learn a mapping from inputs to outputs</li>
-            <li>Unsupervised Learning: Finds patterns in data without labeled examples</li>
-            <li>Reinforcement Learning: Learns through interaction with an environment</li>
-        </ul>
-        
-        <h2>Popular Algorithms</h2>
-        <table>
-            <tr>
-                <th>Algorithm</th>
-                <th>Type</th>
-                <th>Use Case</th>
-            </tr>
-            <tr>
-                <td>Linear Regression</td>
-                <td>Supervised</td>
-                <td>Predicting continuous values</td>
-            </tr>
-            <tr>
-                <td>K-Means</td>
-                <td>Unsupervised</td>
-                <td>Clustering data points</td>
-            </tr>
-        </table>
-        
-        <blockquote>
-            "Machine learning is the future of technology, enabling systems to learn and adapt without being explicitly programmed for every scenario."
-        </blockquote>
-        
-        <div class="footer">
-            <p>For more information, visit our comprehensive ML guide.</p>
-        </div>
-    </body>
-    </html>
-    """
-    
-    sample_html_2 = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Python Programming Guide</title>
-    </head>
-    <body>
-        <h1>Python Programming Basics</h1>
-        <p>Python is a high-level, interpreted programming language known for its simplicity and readability. It's widely used in web development, data science, artificial intelligence, and automation.</p>
-        
-        <h2>Key Features</h2>
-        <ul>
-            <li>Easy to learn and use</li>
-            <li>Extensive standard library</li>
-            <li>Cross-platform compatibility</li>
-            <li>Strong community support</li>
-        </ul>
-        
-        <h2>Data Types</h2>
-        <p>Python supports various data types including:</p>
-        <ul>
-            <li>Numbers (int, float, complex)</li>
-            <li>Strings</li>
-            <li>Lists</li>
-            <li>Tuples</li>
-            <li>Dictionaries</li>
-            <li>Sets</li>
-        </ul>
-        
-        <h3>Example Code</h3>
-        <p>Here's a simple Python example:</p>
-        <div class="code-block">
-            def greet(name):
-                return f"Hello, {name}!"
-            
-            message = greet("World")
-            print(message)
-        </div>
-    </body>
-    </html>
-    """
-    
+    """Demonstrate the RAG pipeline with Wayback Machine snapshots."""
+
+    logger.info("\n" + "="*60)
+    logger.info("WAYBACK MACHINE SNAPSHOT PROCESSING DEMONSTRATION")
+    logger.info("="*60)
+
+    # Check if wayback snapshots directory exists
+    wayback_directory = "./20201130051600"  # Example directory from user's description
+
+    if not os.path.exists(wayback_directory):
+        logger.error(f"Wayback directory '{wayback_directory}' not found.")
+        logger.error("Please provide a directory with Wayback Machine snapshots.")
+        return
+
     try:
-        # Initialize the RAG pipeline
-        logger.info("Initializing RAG Pipeline...")
+        # Initialize pipeline for wayback processing
         pipeline = RAGPipeline(
-            collection_name="example_documents",
-            persist_directory="./example_chroma_db"
+            collection_name="wayback_documents",
+            persist_directory="./wayback_chroma_db"
         )
-        
-        # Pre-load models (optional but recommended for better performance)
+
+        # Pre-load models
         logger.info("Loading models...")
         pipeline.load_models()
-        
-        # Process sample HTML documents
-        logger.info("Processing sample HTML documents...")
-        
-        html_documents = [
-            {"html": sample_html_1, "url": "https://example.com/ml-fundamentals"},
-            {"html": sample_html_2, "url": "https://example.com/python-guide"}
-        ]
-        
-        # Process multiple documents
-        results = pipeline.process_multiple_html(html_documents)
-        
-        # Display processing results
-        logger.info("\n" + "="*50)
-        logger.info("PROCESSING RESULTS")
-        logger.info("="*50)
-        
-        for i, result in enumerate(results):
+
+        # Validate wayback directory
+        logger.info("Validating Wayback snapshots directory...")
+        validation = pipeline.validate_wayback_directory(wayback_directory)
+
+        logger.info(f"Directory validation results:")
+        logger.info(f"  Directory exists: {validation.get('directory_exists', False)}")
+        logger.info(f"  HTML files: {validation.get('html_files_count', 0)}")
+        logger.info(f"  Meta files: {validation.get('meta_files_count', 0)}")
+        logger.info(f"  Complete pairs: {validation.get('paired_files_count', 0)}")
+
+        if validation.get('errors'):
+            logger.warning(f"  Errors: {'; '.join(validation['errors'])}")
+
+        # Check if directory has HTML files (don't require meta.json files)
+        if not validation.get('directory_exists', False):
+            logger.error("Directory does not exist, stopping")
+            return
+            
+        if validation.get('html_files_count', 0) == 0:
+            logger.error("No HTML files found in directory, stopping")
+            return
+            
+        logger.info(f"Found {validation.get('html_files_count', 0)} HTML files to process")
+        if validation.get('paired_files_count', 0) > 0:
+            logger.info(f"  {validation.get('paired_files_count', 0)} have corresponding meta.json files")
+        orphaned_html = len(validation.get('orphaned_html_files', []))
+        if orphaned_html > 0:
+            logger.info(f"  {orphaned_html} will use synthetic metadata")
+
+        # Process wayback snapshots (all HTML files, not just those with metadata)
+        logger.info("Processing ALL Wayback HTML files (with or without metadata)...")
+        wayback_results = pipeline.process_wayback_snapshots(
+            wayback_directory,
+            require_metadata=False,  # Process ALL HTML files, not just those with meta.json
+            # Optional filters - uncomment to test
+            # domain_filter="sluga-narodu.com",
+            # year_filter=2020,
+            # min_content_length=1000
+        )
+
+        # Display wayback processing results
+        logger.info("\nWayback Processing Results:")
+        successful_wayback = sum(1 for r in wayback_results if r.get('success', False))
+        failed_wayback = len(wayback_results) - successful_wayback
+
+        logger.info(f"  Processed: {successful_wayback} successful, {failed_wayback} failed")
+
+        for i, result in enumerate(wayback_results):
             if result['success']:
-                logger.info(f"\nDocument {i+1}: {result['url']}")
-                logger.info(f"  Original HTML length: {result['original_html_length']:,} chars")
-                logger.info(f"  Cleaned HTML length: {result['cleaned_html_length']:,} chars")
-                logger.info(f"  Text blocks extracted: {result['text_blocks_count']}")
-                logger.info(f"  Final embedded blocks: {result['embedded_blocks_count']}")
-                logger.info(f"  Total processing time: {result['processing_times']['total']:.2f}s")
-            else:
-                logger.error(f"Document {i+1} failed: {result.get('error', 'Unknown error')}")
-        
+                logger.info(f"\nWayback Document {i+1}:")
+                logger.info(f"  URL: {result['url']}")
+                logger.info(f"  Wayback processed: {result.get('wayback_processed', False)}")
+                logger.info(f"  Text blocks: {result['embedded_blocks_count']}")
+                logger.info(f"  Processing time: {result['processing_times']['total']:.2f}s")
+                if 'stage0_wayback' in result['processing_times']:
+                    logger.info(f"  Stage 0 (Wayback): {result['processing_times']['stage0_wayback']:.2f}s")
+
         # Get pipeline statistics
         stats = pipeline.get_pipeline_stats()
         logger.info(f"\nPipeline Statistics:")
         logger.info(f"  Total documents in database: {stats['vector_store']['document_count']}")
         logger.info(f"  Embedding model: {stats['embedding_model']['model_name']}")
         logger.info(f"  Embedding dimension: {stats['embedding_model']['embedding_dimension']}")
-        
-        # Demonstrate search functionality
+
+        # Demonstrate wayback-specific search
         logger.info("\n" + "="*50)
-        logger.info("SEARCH EXAMPLES")
+        logger.info("WAYBACK-SPECIFIC SEARCH EXAMPLES")
         logger.info("="*50)
-        
-        search_queries = [
-            "What is machine learning?",
-            "Python data types",
-            "supervised learning algorithms",
-            "programming language features"
+
+        wayback_queries = [
+            "партія",
+            "політична",
+            "народу",
+            "слуга"
         ]
-        
-        for query in search_queries:
-            logger.info(f"\nSearching for: '{query}'")
-            search_results = pipeline.search(query, n_results=3)
-            
-            if search_results:
-                for j, result in enumerate(search_results):
+
+        for query in wayback_queries:
+            logger.info(f"\nWayback search for: '{query}'")
+            wayback_search_results = pipeline.search_wayback_snapshots(
+                query,
+                n_results=3,
+                # timestamp_filter="20201130051600",  # Uncomment to filter by timestamp
+                # domain_filter="sluga-narodu.com"        # Uncomment to filter by domain
+            )
+
+            if wayback_search_results:
+                for j, result in enumerate(wayback_search_results):
+                    metadata = result['metadata']
                     logger.info(f"  Result {j+1} (similarity: {result['similarity_score']:.3f}):")
-                    logger.info(f"    Text: {result['text'][:100]}...")
-                    logger.info(f"    Type: {result['metadata']['element_type']}")
-                    logger.info(f"    URL: {result['metadata']['url']}")
+                    logger.info(f"    Text: {result['text'][:80]}...")
+                    logger.info(f"    Wayback timestamp: {metadata.get('wayback_timestamp', 'N/A')}")
+                    logger.info(f"    Original URL: {metadata.get('wayback_original_url', 'N/A')}")
+                    logger.info(f"    Archive URL: {metadata.get('wayback_archive_url', 'N/A')}")
+                    logger.info(f"    Domain: {metadata.get('wayback_domain', 'N/A')}")
             else:
-                logger.info("  No results found")
-        
-        # Demonstrate metadata filtering
+                logger.info("  No wayback results found")
+
+        # Search by wayback metadata
         logger.info("\n" + "="*50)
-        logger.info("METADATA FILTERING EXAMPLES")
+        logger.info("WAYBACK METADATA FILTERING")
         logger.info("="*50)
-        
-        # Search for headings only
-        logger.info("\nSearching for headings only...")
-        heading_results = pipeline.search_by_metadata(
-            metadata_filter={"element_type": "heading"},
+
+        # Find all documents from 2020
+        logger.info("\nSearching for documents from timestamp 20201130051600...")
+        wayback_2020 = pipeline.search_by_metadata(
+            metadata_filter={"wayback_timestamp": "20201130051600"},
             limit=5
         )
-        
-        for result in heading_results:
-            logger.info(f"  Heading: {result['text']}")
-            logger.info(f"    Level: {result['metadata'].get('hierarchy_level', 'N/A')}")
-        
-        # Search for content from specific URL
-        logger.info(f"\nSearching for content from ML fundamentals page...")
-        ml_results = pipeline.search_by_metadata(
-            metadata_filter={"url": "https://example.com/ml-fundamentals"},
-            limit=3
+
+        for result in wayback_2020:
+            metadata = result['metadata']
+            logger.info(f"  Found: {result['text'][:60]}...")
+            logger.info(f"    Timestamp: {metadata.get('wayback_timestamp', 'N/A')}")
+            logger.info(f"    Domain: {metadata.get('wayback_domain', 'N/A')}")
+
+        # Search for headings only from wayback
+        logger.info("\nSearching for headings from wayback snapshots...")
+        wayback_headings = pipeline.search_by_metadata(
+            metadata_filter={
+                "element_type": "heading",
+                "wayback_domain": "sluga-narodu.com"
+            },
+            limit=5
         )
-        
-        for result in ml_results:
-            logger.info(f"  {result['metadata']['element_type']}: {result['text'][:80]}...")
-        
-        # Export documents (optional)
-        logger.info("\nExporting documents...")
+
+        for result in wayback_headings:
+            metadata = result['metadata']
+            logger.info(f"  Heading: {result['text']}")
+            logger.info(f"    Level: {metadata.get('hierarchy_level', 'N/A')}")
+            logger.info(f"    URL: {metadata.get('wayback_original_url', 'N/A')}")
+
+        # Export wayback documents
+        logger.info("\nExporting wayback documents...")
         try:
-            pipeline.export_documents("exported_documents.json", format="json")
-            logger.info("Documents exported to exported_documents.json")
+            pipeline.export_documents("wayback_documents.json", format="json")
+            logger.info("Wayback documents exported to wayback_documents.json")
         except Exception as e:
             logger.warning(f"Export failed: {e}")
-        
+
         logger.info("\n" + "="*50)
-        logger.info("EXAMPLE COMPLETED SUCCESSFULLY!")
+        logger.info("WAYBACK DEMONSTRATION COMPLETED!")
         logger.info("="*50)
-        logger.info("The RAG pipeline has successfully:")
-        logger.info("1. Pruned HTML content to remove noise")
-        logger.info("2. Parsed HTML into structured text blocks")
-        logger.info("3. Generated embeddings for semantic search")
-        logger.info("4. Stored everything in ChromaDB for retrieval")
-        logger.info("5. Demonstrated search and filtering capabilities")
-        
+        logger.info("Successfully demonstrated:")
+        logger.info("0. Wayback snapshot directory validation")
+        logger.info("1. Processing Wayback Machine snapshots")
+        logger.info("2. Wayback-specific search capabilities")
+        logger.info("3. Metadata filtering for archived content")
+        logger.info("4. Export of processed wayback content")
+
     except Exception as e:
-        logger.error(f"Error in example execution: {e}")
+        logger.error(f"Error in wayback demonstration: {e}")
         raise
-    
+
     finally:
         # Clean up resources
         try:

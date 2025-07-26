@@ -47,26 +47,33 @@ class HTMLPruner:
             logger.error(f"Error loading HTML Pruner model: {e}")
             raise
     
-    def prune_html(self, raw_html: str, max_length: int = 4096) -> str:
+    def prune_html(self, raw_html: str, max_length: int = 4096, use_ai_model: bool = True) -> str:
         """
         Prune HTML content to remove noise and keep main content.
         
         Args:
             raw_html: Raw HTML content with all tags, styles, scripts
-            max_length: Maximum length of input text to process
+            max_length: Maximum length of input text to process with AI model
+            use_ai_model: Whether to use AI model or basic cleaning
             
         Returns:
             Cleaned HTML with main content (headings, paragraphs, lists, tables)
         """
+        # If HTML is too long or AI model is disabled, use basic cleaning
+        if len(raw_html) > max_length or not use_ai_model:
+            logger.info(f"Using basic HTML cleaning (length: {len(raw_html)}, use_ai: {use_ai_model})")
+            return self._basic_html_cleaning(raw_html)
+        
+        # Try AI model for shorter content
         if not self.model or not self.tokenizer:
-            self.load_model()
+            try:
+                self.load_model()
+            except Exception as e:
+                logger.error(f"Failed to load AI model: {e}")
+                logger.info("Falling back to basic HTML cleaning")
+                return self._basic_html_cleaning(raw_html)
         
         try:
-            # Truncate input if too long
-            if len(raw_html) > max_length:
-                raw_html = raw_html[:max_length]
-                logger.warning(f"Input HTML truncated to {max_length} characters")
-            
             # Create prompt for the model
             prompt = f"Clean the following HTML content, keeping only the main content (headings, paragraphs, lists, tables) and removing scripts, styles, and other noise:\n\n{raw_html}\n\nCleaned HTML:"
             
@@ -93,14 +100,62 @@ class HTMLPruner:
             else:
                 cleaned_html = generated_text[len(prompt):].strip()
             
-            logger.info(f"HTML pruning completed. Input length: {len(raw_html)}, Output length: {len(cleaned_html)}")
+            logger.info(f"AI HTML pruning completed. Input length: {len(raw_html)}, Output length: {len(cleaned_html)}")
             return cleaned_html
             
         except Exception as e:
-            logger.error(f"Error during HTML pruning: {e}")
-            # Fallback: return original HTML if pruning fails
-            logger.warning("Falling back to original HTML content")
-            return raw_html
+            logger.error(f"Error during AI HTML pruning: {e}")
+            logger.info("Falling back to basic HTML cleaning")
+            return self._basic_html_cleaning(raw_html)
+    
+    def _basic_html_cleaning(self, html_content: str) -> str:
+        """
+        Basic HTML cleaning without AI model (fallback method).
+        
+        Args:
+            html_content: Raw HTML content
+            
+        Returns:
+            Cleaned HTML with basic filtering
+        """
+        try:
+            from bs4 import BeautifulSoup
+            import re
+            
+            logger.info("Applying basic HTML cleaning")
+            
+            # Parse with BeautifulSoup
+            soup = BeautifulSoup(html_content, 'html.parser')
+            
+            # Remove scripts, styles, and other non-content elements
+            for element in soup(['script', 'style', 'meta', 'link', 'noscript']):
+                element.decompose()
+            
+            # Remove wayback machine toolbar and archive elements
+            for element in soup.find_all(attrs={'id': lambda x: x and 'wm-' in x}):
+                element.decompose()
+            for element in soup.find_all(attrs={'class': lambda x: x and any('archive' in str(c).lower() for c in x) if isinstance(x, list) else 'archive' in str(x).lower()}):
+                element.decompose()
+            
+            # Get the body content if available
+            body = soup.find('body')
+            if body:
+                # Return cleaned body content
+                cleaned_html = str(body)
+            else:
+                # If no body, return the whole cleaned content
+                cleaned_html = str(soup)
+            
+            # Basic text cleaning
+            cleaned_html = re.sub(r'\s+', ' ', cleaned_html)  # Normalize whitespace
+            
+            logger.info(f"Basic cleaning completed. Output length: {len(cleaned_html)}")
+            return cleaned_html
+            
+        except Exception as e:
+            logger.error(f"Error in basic HTML cleaning: {e}")
+            # Final fallback - return original content
+            return html_content
     
     def cleanup(self) -> None:
         """Clean up model resources."""

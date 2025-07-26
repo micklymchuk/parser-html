@@ -45,8 +45,13 @@ class HTMLParser:
             structured_data = []
             
             # Process all relevant elements in document order
-            for element in soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'li', 'td', 'th', 'div', 'span', 'blockquote']):
+            elements_found = soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'li', 'td', 'th', 'div', 'span', 'blockquote'])
+            logger.debug(f"Found {len(elements_found)} HTML elements to process")
+            
+            for element in elements_found:
                 text_blocks = self._extract_text_blocks(element, url)
+                if text_blocks:
+                    logger.debug(f"Extracted {len(text_blocks)} text blocks from {element.name} element")
                 structured_data.extend(text_blocks)
             
             logger.info(f"HTML parsing completed. Extracted {len(structured_data)} text blocks")
@@ -71,7 +76,7 @@ class HTMLParser:
         
         # Skip if element has no text content
         text_content = self._get_clean_text(element)
-        if not text_content or len(text_content.strip()) < 10:  # Skip very short content
+        if not text_content or len(text_content.strip()) < 3:  # Reduced from 10 to 3 characters minimum
             return text_blocks
         
         # Determine element type and hierarchy level
