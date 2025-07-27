@@ -8,7 +8,7 @@ Main RAG Pipeline that orchestrates all 5 stages:
 
 Enhanced with modern Python practices, comprehensive error handling, and metrics.
 """
-
+import inspect
 from typing import List, Dict, Any, Optional, Union
 import time
 from pathlib import Path
@@ -18,7 +18,8 @@ from ..processors.html_pruner import HTMLPruner
 from ..processors.html_parser import HTMLParser
 from ..processors.text_embedder import TextEmbedder
 from ..processors.vector_store import VectorStore
-from ..core.config import PipelineConfig, WaybackConfig, SearchConfig
+from ..processors.content_analyzer import ContentAnalyzer
+from ..core.config import PipelineConfig, WaybackConfig, SearchConfig, ContentAnalyticsConfig
 from ..utils.logging import PipelineLogger
 from ..utils.metrics import MetricsCollector, track_stage, track_processing
 from ..utils.validators import PipelineValidator, validate_search_query
@@ -26,6 +27,7 @@ from ..exceptions.pipeline_exceptions import (
     PipelineError, HTMLProcessingError, EmbeddingError, 
     VectorStoreError, ValidationError, handle_pipeline_error
 )
+from ..analytics.models import ContentAnalytics, AnalyticsResult
 
 
 class RAGPipeline:
@@ -41,7 +43,9 @@ class RAGPipeline:
         max_chunk_size: Optional[int] = None,
         prefer_basic_cleaning: Optional[bool] = None,
         cyrillic_detection_threshold: Optional[float] = None,
-        enable_metrics: bool = True
+        enable_metrics: bool = True,
+        enable_content_analytics: bool = False,
+        analytics_config: Optional[ContentAnalyticsConfig] = None
     ):
         """
         Initialize the RAG pipeline with all components.
@@ -56,6 +60,8 @@ class RAGPipeline:
             prefer_basic_cleaning: If True, default to basic cleaning over AI model (overrides config)
             cyrillic_detection_threshold: Threshold for Cyrillic content detection (overrides config)
             enable_metrics: Enable performance metrics collection
+            enable_content_analytics: Enable content analytics processing
+            analytics_config: Optional content analytics configuration
         """
         # Load configuration
         if config is None:
@@ -79,6 +85,7 @@ class RAGPipeline:
         
         self.config = config
         self.enable_metrics = enable_metrics
+        self.enable_content_analytics = enable_content_analytics
         
         # Initialize logger
         self.logger = PipelineLogger("RAGPipeline")
@@ -112,6 +119,18 @@ class RAGPipeline:
                 collection_name=config.collection_name,
                 persist_directory=config.persist_directory
             )
+            
+            # Stage 5: Content Analytics (optional)
+            self.content_analyzer = None
+            if self.enable_content_analytics:
+                try:
+                    if analytics_config is None:
+                        analytics_config = ContentAnalyticsConfig(enabled=True)
+                    self.content_analyzer = ContentAnalyzer(analytics_config)
+                    self.logger.info("Content analytics enabled")
+                except Exception as e:
+                    self.logger.warning(f"Failed to initialize content analytics: {e}")
+                    self.enable_content_analytics = False
             
             self.logger.info("RAG pipeline initialized successfully")
             
@@ -163,7 +182,8 @@ class RAGPipeline:
         raw_html: str, 
         url: str = "", 
         wayback_metadata: Optional[Dict[str, Any]] = None, 
-        force_basic_cleaning: bool = False
+        force_basic_cleaning: bool = False,
+        analyze_content: Optional[bool] = None
     ) -> Dict[str, Any]:
         """
         Process raw HTML through the complete pipeline.
@@ -173,6 +193,7 @@ class RAGPipeline:
             url: Source URL of the HTML content
             wayback_metadata: Optional Wayback Machine metadata
             force_basic_cleaning: If True, forces basic HTML cleaning instead of AI model
+            analyze_content: If True, performs content analytics (overrides pipeline setting)
             
         Returns:
             Dictionary with processing results and statistics
@@ -326,6 +347,63 @@ class RAGPipeline:
                     "documents_stored": len(embedded_blocks)
                 })
 
+            # Stage 5: Content Analytics (optional)
+            content_analytics_result = None
+            should_analyze = analyze_content if analyze_content is not None else self.enable_content_analytics
+            
+            if should_analyze and self.content_analyzer:
+                with track_stage(self.metrics_collector, "stage5_analytics") if self.metrics_collector else nullcontext():
+                    self.logger.log_stage_start("Stage 5: Content Analytics")
+                    
+                    try:
+                        # Combine all text blocks for analysis
+                        full_text = ' '.join([block['text'] for block in text_blocks if block.get('text')])
+                        
+                        if full_text.strip():
+                            # Generate unique document ID
+                            doc_id = f"{url}_{int(time.time())}" if url else f"doc_{int(time.time())}"
+                            
+                            # Perform content analysis
+                            content_analytics_result = self.content_analyzer.analyze_document(
+                                text=full_text,
+                                document_id=doc_id,
+                                url=url
+                            )
+                            
+                            # Store analytics results in vector store metadata
+                            analytics_metadata = {
+                                'analytics_processed': True,
+                                'sentiment_score': content_analytics_result.sentiment.score,
+                                'sentiment_label': content_analytics_result.sentiment.label.value,
+                                'controversy_score': content_analytics_result.controversy.score,
+                                'controversy_level': content_analytics_result.controversy.level.value,
+                                'primary_topic': content_analytics_result.topics.primary_topic,
+                                'topic_confidence': content_analytics_result.topics.confidence,
+                                'entity_count': len(content_analytics_result.entities),
+                                'language': content_analytics_result.language,
+                                'quality_score': content_analytics_result.quality_score,
+                                'confidence_score': content_analytics_result.confidence_score
+                            }
+                            
+                            # Update document metadata with analytics
+                            for block in embedded_blocks:
+                                block['metadata'].update(analytics_metadata)
+                            
+                            # Re-store documents with updated metadata
+                            self.vector_store.add_documents(embedded_blocks)
+                            
+                            self.logger.info(f"Content analytics completed for {doc_id}")
+                        else:
+                            self.logger.warning("No text content available for analytics")
+                            
+                    except Exception as e:
+                        self.logger.warning(f"Content analytics failed: {e}")
+                        # Continue processing even if analytics fails
+                    
+                    self.logger.log_stage_end("Stage 5: Content Analytics", {
+                        "analytics_performed": content_analytics_result is not None
+                    })
+
             # Record success metrics
             if self.metrics_collector:
                 self.metrics_collector.record_document_processed(
@@ -346,7 +424,8 @@ class RAGPipeline:
                 'text_blocks_count': len(text_blocks),
                 'chunked_blocks_count': len(chunked_blocks),
                 'embedded_blocks_count': len(embedded_blocks),
-                'embedding_dimension': self.text_embedder.embedding_dimension
+                'embedding_dimension': self.text_embedder.embedding_dimension,
+                'content_analytics': content_analytics_result.dict() if content_analytics_result else None
             }
             
             # Add metrics if available
@@ -393,7 +472,8 @@ class RAGPipeline:
     def process_multiple_html(
         self, 
         html_documents: List[Dict[str, str]], 
-        force_basic_cleaning: bool = False
+        force_basic_cleaning: bool = False,
+        analyze_content: Optional[bool] = None
     ) -> List[Dict[str, Any]]:
         """
         Process multiple HTML documents.
@@ -401,6 +481,7 @@ class RAGPipeline:
         Args:
             html_documents: List of dictionaries with 'html' and 'url' keys
             force_basic_cleaning: If True, forces basic cleaning for all documents
+            analyze_content: If True, performs content analytics on all documents
             
         Returns:
             List of processing results
@@ -428,7 +509,8 @@ class RAGPipeline:
                         doc['html'], 
                         doc.get('url', f'document_{i}'),
                         wayback_metadata,
-                        force_basic_cleaning
+                        force_basic_cleaning,
+                        analyze_content
                     )
                     results.append(result)
                 except Exception as e:
@@ -576,7 +658,7 @@ class RAGPipeline:
             
             # Process snapshots
             snapshots = self.wayback_processor.process_snapshots_directory(
-                snapshots_directory, 
+                directory_path=snapshots_directory,
                 require_metadata=wayback_config.require_metadata
             )
             
@@ -586,8 +668,9 @@ class RAGPipeline:
             
             # Apply filters if provided
             combined_filters = {**wayback_config.dict(), **filter_kwargs}
+            self.logger.info(combined_filters)
             if any(v for v in combined_filters.values() if v):
-                snapshots = self.wayback_processor.filter_snapshots_by_criteria(snapshots, **combined_filters)
+                snapshots = self.wayback_processor.filter_snapshots_by_criteria(snapshots, **filter_kwargs)
                 self.logger.info(f"After filtering: {len(snapshots)} snapshots remaining")
             
             self.logger.log_stage_end("Stage 0: Wayback Snapshot Processing", {
@@ -676,6 +759,11 @@ class RAGPipeline:
                 'embedding_model': self.text_embedder.get_model_info(),
                 'html_pruner_model': self.html_pruner.model_name,
                 'wayback_processor': 'Available',
+                'content_analytics': {
+                    'enabled': self.enable_content_analytics,
+                    'available': self.content_analyzer is not None,
+                    'model_info': self.content_analyzer.get_model_info() if self.content_analyzer else None
+                },
                 'config': self.config.dict(),
                 'pipeline_version': '2.0.0'
             }
@@ -715,6 +803,9 @@ class RAGPipeline:
             self.html_pruner.cleanup()
             self.text_embedder.cleanup()
             self.vector_store.cleanup()
+            
+            if self.content_analyzer:
+                self.content_analyzer.cleanup()
             
             self.logger.info("RAG pipeline cleanup completed")
         except Exception as e:
@@ -763,6 +854,178 @@ class RAGPipeline:
             
         except Exception as e:
             raise PipelineError(f"Export failed: {str(e)}") from e
+    
+    # Content Analytics Methods
+    
+    @handle_pipeline_error
+    def analyze_existing_documents(self, limit: Optional[int] = None) -> AnalyticsResult:
+        """
+        Perform content analytics on existing documents in the vector store.
+        
+        Args:
+            limit: Maximum number of documents to analyze
+            
+        Returns:
+            Analytics results for existing documents
+            
+        Raises:
+            PipelineError: If content analytics is not enabled or analysis fails
+        """
+        if not self.enable_content_analytics or not self.content_analyzer:
+            raise PipelineError("Content analytics is not enabled")
+        
+        try:
+            self.logger.info("Analyzing existing documents in vector store...")
+            
+            # Get all documents from vector store
+            all_docs = self.vector_store.filter_by_metadata({}, limit=limit)
+            
+            if not all_docs:
+                self.logger.warning("No documents found in vector store")
+                return AnalyticsResult(
+                    total_documents=0,
+                    successful=0,
+                    failed=0,
+                    analytics=[],
+                    processing_time=0.0,
+                    average_processing_time=0.0,
+                    errors=[],
+                    warnings=[]
+                )
+            
+            # Prepare documents for analysis
+            documents_for_analysis = []
+            for doc in all_docs:
+                documents_for_analysis.append({
+                    'text': doc['text'],
+                    'id': doc['metadata'].get('chunk_id', 'unknown'),
+                    'url': doc['metadata'].get('url', '')
+                })
+            
+            # Perform batch analysis
+            result = self.content_analyzer.analyze_batch(documents_for_analysis)
+            
+            self.logger.info(f"Analyzed {result.successful} documents successfully")
+            return result
+            
+        except Exception as e:
+            raise PipelineError(f"Failed to analyze existing documents: {str(e)}") from e
+    
+    def search_by_sentiment(self, sentiment_label: str, n_results: int = 10) -> List[Dict[str, Any]]:
+        """
+        Search documents by sentiment label.
+        
+        Args:
+            sentiment_label: Sentiment label ('positive', 'negative', 'neutral')
+            n_results: Number of results to return
+            
+        Returns:
+            List of documents with the specified sentiment
+        """
+        metadata_filter = {'sentiment_label': sentiment_label}
+        return self.search_by_metadata(metadata_filter, limit=n_results)
+    
+    def search_by_controversy_level(self, controversy_level: str, n_results: int = 10) -> List[Dict[str, Any]]:
+        """
+        Search documents by controversy level.
+        
+        Args:
+            controversy_level: Controversy level ('low', 'medium', 'high', 'critical')
+            n_results: Number of results to return
+            
+        Returns:
+            List of documents with the specified controversy level
+        """
+        metadata_filter = {'controversy_level': controversy_level}
+        return self.search_by_metadata(metadata_filter, limit=n_results)
+    
+    def search_by_topic(self, topic: str, n_results: int = 10) -> List[Dict[str, Any]]:
+        """
+        Search documents by primary topic.
+        
+        Args:
+            topic: Primary topic to search for
+            n_results: Number of results to return
+            
+        Returns:
+            List of documents with the specified topic
+        """
+        metadata_filter = {'primary_topic': topic}
+        return self.search_by_metadata(metadata_filter, limit=n_results)
+    
+    def get_analytics_summary(self) -> Dict[str, Any]:
+        """
+        Get summary statistics of analytics data in the vector store.
+        
+        Returns:
+            Dictionary with analytics summary statistics
+        """
+        try:
+            # Get all documents with analytics metadata
+            all_docs = self.vector_store.filter_by_metadata({'analytics_processed': True})
+            
+            if not all_docs:
+                return {'message': 'No documents with analytics data found'}
+            
+            # Calculate summary statistics
+            sentiment_counts = {}
+            controversy_counts = {}
+            topic_counts = {}
+            sentiment_scores = []
+            controversy_scores = []
+            quality_scores = []
+            
+            for doc in all_docs:
+                metadata = doc['metadata']
+                
+                # Sentiment statistics
+                sentiment_label = metadata.get('sentiment_label')
+                if sentiment_label:
+                    sentiment_counts[sentiment_label] = sentiment_counts.get(sentiment_label, 0) + 1
+                
+                sentiment_score = metadata.get('sentiment_score')
+                if sentiment_score is not None:
+                    sentiment_scores.append(sentiment_score)
+                
+                # Controversy statistics
+                controversy_level = metadata.get('controversy_level')
+                if controversy_level:
+                    controversy_counts[controversy_level] = controversy_counts.get(controversy_level, 0) + 1
+                
+                controversy_score = metadata.get('controversy_score')
+                if controversy_score is not None:
+                    controversy_scores.append(controversy_score)
+                
+                # Topic statistics
+                topic = metadata.get('primary_topic')
+                if topic:
+                    topic_counts[topic] = topic_counts.get(topic, 0) + 1
+                
+                # Quality statistics
+                quality_score = metadata.get('quality_score')
+                if quality_score is not None:
+                    quality_scores.append(quality_score)
+            
+            # Calculate averages
+            avg_sentiment = sum(sentiment_scores) / len(sentiment_scores) if sentiment_scores else 0
+            avg_controversy = sum(controversy_scores) / len(controversy_scores) if controversy_scores else 0
+            avg_quality = sum(quality_scores) / len(quality_scores) if quality_scores else 0
+            
+            return {
+                'total_documents_analyzed': len(all_docs),
+                'sentiment_distribution': sentiment_counts,
+                'controversy_distribution': controversy_counts,
+                'topic_distribution': dict(sorted(topic_counts.items(), key=lambda x: x[1], reverse=True)[:10]),
+                'average_sentiment_score': avg_sentiment,
+                'average_controversy_score': avg_controversy,
+                'average_quality_score': avg_quality,
+                'sentiment_range': {'min': min(sentiment_scores), 'max': max(sentiment_scores)} if sentiment_scores else None,
+                'controversy_range': {'min': min(controversy_scores), 'max': max(controversy_scores)} if controversy_scores else None
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error getting analytics summary: {e}")
+            return {'error': str(e)}
 
 
 # Context manager for nullcontext (Python 3.7+ compatibility)

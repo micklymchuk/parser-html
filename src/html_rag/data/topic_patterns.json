@@ -1,0 +1,239 @@
+{
+  "domains": {
+    "politics": {
+      "keywords": {
+        "ukrainian": [
+          "політика", "вибори", "парламент", "уряд", "президент",
+          "міністр", "депутат", "партія", "опозиція", "коаліція",
+          "закон", "реформа", "голосування", "кампанія"
+        ],
+        "russian": [
+          "политика", "выборы", "парламент", "правительство", "президент",
+          "министр", "депутат", "партия", "оппозиция", "коалиция",
+          "закон", "реформа", "голосование", "кампания"
+        ],
+        "english": [
+          "politics", "election", "parliament", "government", "president",
+          "minister", "deputy", "party", "opposition", "coalition",
+          "law", "reform", "voting", "campaign"
+        ]
+      },
+      "patterns": [
+        "політичн.*",
+        "виборч.*",
+        "парламентськ.*",
+        "урядов.*",
+        "president.*",
+        "minister.*",
+        "parliament.*"
+      ]
+    },
+    "economics": {
+      "keywords": {
+        "ukrainian": [
+          "економіка", "фінанси", "бюджет", "податки", "інвестиції",
+          "торгівля", "банк", "валюта", "інфляція", "ВВП",
+          "експорт", "імпорт", "ринок", "бізнес"
+        ],
+        "russian": [
+          "экономика", "финансы", "бюджет", "налоги", "инвестиции",
+          "торговля", "банк", "валюта", "инфляция", "ВВП",
+          "экспорт", "импорт", "рынок", "бизнес"
+        ],
+        "english": [
+          "economy", "finance", "budget", "taxes", "investment",
+          "trade", "bank", "currency", "inflation", "GDP",
+          "export", "import", "market", "business"
+        ]
+      },
+      "patterns": [
+        "економічн.*",
+        "фінансов.*",
+        "бюджетн.*",
+        "economic.*",
+        "financial.*",
+        "budget.*"
+      ]
+    },
+    "social": {
+      "keywords": {
+        "ukrainian": [
+          "суспільство", "освіта", "охорона здоров'я", "соціальний",
+          "культура", "молодь", "сім'я", "права людини",
+          "рівність", "справедливість", "добробут"
+        ],
+        "russian": [
+          "общество", "образование", "здравоохранение", "социальный",
+          "культура", "молодежь", "семья", "права человека",
+          "равенство", "справедливость", "благосостояние"
+        ],
+        "english": [
+          "society", "education", "healthcare", "social",
+          "culture", "youth", "family", "human rights",
+          "equality", "justice", "welfare"
+        ]
+      },
+      "patterns": [
+        "суспільн.*",
+        "соціальн.*",
+        "освітн.*",
+        "social.*",
+        "cultural.*",
+        "educational.*"
+      ]
+    },
+    "technology": {
+      "keywords": {
+        "ukrainian": [
+          "технології", "цифровізація", "інновації", "штучний інтелект",
+          "інтернет", "програмне забезпечення", "кібербезпека",
+          "блокчейн", "дані", "алгоритм"
+        ],
+        "russian": [
+          "технологии", "цифровизация", "инновации", "искусственный интеллект",
+          "интернет", "программное обеспечение", "кибербезопасность",
+          "блокчейн", "данные", "алгоритм"
+        ],
+        "english": [
+          "technology", "digitalization", "innovation", "artificial intelligence",
+          "internet", "software", "cybersecurity",
+          "blockchain", "data", "algorithm"
+        ]
+      },
+      "patterns": [
+        "технологічн.*",
+        "цифров.*",
+        "інноваційн.*",
+        "technolog.*",
+        "digital.*",
+        "innovation.*"
+      ]
+    },
+    "security": {
+      "keywords": {
+        "ukrainian": [
+          "безпека", "оборона", "армія", "поліція", "розвідка",
+          "тероризм", "злочинність", "кібератаки", "захист",
+          "війна", "мир", "конфлікт"
+        ],
+        "russian": [
+          "безопасность", "оборона", "армия", "полиция", "разведка",
+          "терроризм", "преступность", "кибератаки", "защита",
+          "война", "мир", "конфликт"
+        ],
+        "english": [
+          "security", "defense", "army", "police", "intelligence",
+          "terrorism", "crime", "cyberattacks", "protection",
+          "war", "peace", "conflict"
+        ]
+      },
+      "patterns": [
+        "безпек.*",
+        "оборонн.*",
+        "військов.*",
+        "security.*",
+        "defense.*",
+        "military.*"
+      ]
+    },
+    "environment": {
+      "keywords": {
+        "ukrainian": [
+          "екологія", "довкілля", "клімат", "забруднення",
+          "енергетика", "відновлювальна енергія", "викиди",
+          "природа", "охорона", "стійкий розвиток"
+        ],
+        "russian": [
+          "экология", "окружающая среда", "климат", "загрязнение",
+          "энергетика", "возобновляемая энергия", "выбросы",
+          "природа", "охрана", "устойчивое развитие"
+        ],
+        "english": [
+          "ecology", "environment", "climate", "pollution",
+          "energy", "renewable energy", "emissions",
+          "nature", "conservation", "sustainable development"
+        ]
+      },
+      "patterns": [
+        "екологічн.*",
+        "довкільн.*",
+        "кліматичн.*",
+        "ecological.*",
+        "environmental.*",
+        "climate.*"
+      ]
+    }
+  },
+  "topics": {
+    "political_topics": [
+      "elections",
+      "governance",
+      "legislation",
+      "diplomacy",
+      "public_policy",
+      "political_parties",
+      "democracy",
+      "authoritarianism"
+    ],
+    "economic_topics": [
+      "fiscal_policy",
+      "monetary_policy",
+      "trade",
+      "investment",
+      "employment",
+      "inflation",
+      "economic_growth",
+      "recession"
+    ],
+    "social_topics": [
+      "education_reform",
+      "healthcare_policy",
+      "social_welfare",
+      "human_rights",
+      "gender_equality",
+      "migration",
+      "urbanization",
+      "demographics"
+    ],
+    "security_topics": [
+      "national_defense",
+      "cybersecurity",
+      "terrorism",
+      "law_enforcement",
+      "international_conflicts",
+      "peacekeeping",
+      "intelligence",
+      "border_security"
+    ]
+  },
+  "sentiment_indicators": {
+    "positive": {
+      "ukrainian": [
+        "успіх", "перемога", "прогрес", "розвиток", "покращення",
+        "досягнення", "зростання", "позитивний", "ефективний"
+      ],
+      "russian": [
+        "успех", "победа", "прогресс", "развитие", "улучшение",
+        "достижение", "рост", "позитивный", "эффективный"
+      ],
+      "english": [
+        "success", "victory", "progress", "development", "improvement",
+        "achievement", "growth", "positive", "effective"
+      ]
+    },
+    "negative": {
+      "ukrainian": [
+        "невдача", "поразка", "регрес", "погіршення", "криза",
+        "проблема", "негативний", "неефективний", "провал"
+      ],
+      "russian": [
+        "неудача", "поражение", "регресс", "ухудшение", "кризис",
+        "проблема", "негативный", "неэффективный", "провал"
+      ],
+      "english": [
+        "failure", "defeat", "regression", "deterioration", "crisis",
+        "problem", "negative", "ineffective", "collapse"
+      ]
+    }
+  }
+}

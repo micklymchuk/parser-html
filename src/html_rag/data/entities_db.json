@@ -1,0 +1,126 @@
+{
+  "people": {
+    "ukrainian_politicians": {
+      "Володимир Зеленський": {
+        "aliases": ["Зеленський", "Volodymyr Zelensky", "Zelensky", "Vladimir Zelenskyy"],
+        "type": "person",
+        "role": "President of Ukraine",
+        "description": "6th President of Ukraine since 2019",
+        "external_ids": {
+          "wikidata": "Q12031",
+          "wikipedia_uk": "Володимир_Зеленський"
+        }
+      },
+      "Петро Порошенко": {
+        "aliases": ["Порошенко", "Petro Poroshenko", "Poroshenko"],
+        "type": "person",
+        "role": "Former President of Ukraine",
+        "description": "5th President of Ukraine (2014-2019)"
+      },
+      "Віталій Кличко": {
+        "aliases": ["Кличко", "Vitali Klitschko", "Klitschko"],
+        "type": "person",
+        "role": "Mayor of Kyiv",
+        "description": "Mayor of Kyiv since 2014, former boxer"
+      }
+    },
+    "international_leaders": {
+      "Joe Biden": {
+        "aliases": ["Biden", "Джо Байден", "Байден"],
+        "type": "person",
+        "role": "President of the United States",
+        "description": "46th President of the United States"
+      },
+      "Emmanuel Macron": {
+        "aliases": ["Macron", "Еммануель Макрон", "Макрон"],
+        "type": "person",
+        "role": "President of France",
+        "description": "President of France since 2017"
+      }
+    }
+  },
+  "organizations": {
+    "ukrainian_parties": {
+      "Слуга народу": {
+        "aliases": ["Servant of the People", "Слуга Народу"],
+        "type": "organization",
+        "category": "political_party",
+        "description": "Political party in Ukraine founded in 2018"
+      },
+      "Європейська Солідарність": {
+        "aliases": ["European Solidarity", "Європейська солідарність"],
+        "type": "organization",
+        "category": "political_party",
+        "description": "Political party led by Petro Poroshenko"
+      }
+    },
+    "international_organizations": {
+      "NATO": {
+        "aliases": ["НАТО", "North Atlantic Treaty Organization"],
+        "type": "organization",
+        "category": "international_organization",
+        "description": "Military alliance of European and North American countries"
+      },
+      "European Union": {
+        "aliases": ["EU", "ЄС", "Європейський Союз"],
+        "type": "organization",
+        "category": "international_organization",
+        "description": "Political and economic union of European member states"
+      }
+    }
+  },
+  "locations": {
+    "ukrainian_cities": {
+      "Київ": {
+        "aliases": ["Kyiv", "Kiev", "Киев"],
+        "type": "location",
+        "category": "city",
+        "description": "Capital and largest city of Ukraine"
+      },
+      "Харків": {
+        "aliases": ["Kharkiv", "Kharkov", "Харьков"],
+        "type": "location",
+        "category": "city",
+        "description": "Second-largest city in Ukraine"
+      },
+      "Одеса": {
+        "aliases": ["Odesa", "Odessa", "Одесса"],
+        "type": "location",
+        "category": "city",
+        "description": "Major port city in southern Ukraine"
+      }
+    },
+    "countries": {
+      "Україна": {
+        "aliases": ["Ukraine", "Украина"],
+        "type": "location",
+        "category": "country",
+        "description": "Country in Eastern Europe"
+      },
+      "Російська Федерація": {
+        "aliases": ["Russia", "Россия", "РФ"],
+        "type": "location",
+        "category": "country",
+        "description": "Country in Eastern Europe and North Asia"
+      }
+    }
+  },
+  "events": {
+    "conflicts": {
+      "Російсько-українська війна": {
+        "aliases": ["Russia-Ukraine War", "Ukrainian War", "War in Ukraine"],
+        "type": "event",
+        "category": "conflict",
+        "description": "Ongoing conflict between Russia and Ukraine since 2014"
+      }
+    },
+    "elections": {
+      "Президентські вибори в Україні 2019": {
+        "aliases": ["2019 Ukrainian presidential election", "Ukrainian elections 2019"],
+        "type": "event",
+        "category": "election",
+        "description": "Presidential election held in Ukraine in 2019"
+      }
+    }
+  }
+}

@@ -6,6 +6,8 @@ from typing import Optional, Dict, Any, List
 from pathlib import Path
 import os
 
+from sqlalchemy.sql.operators import truediv
+
 try:
     # Try pydantic-settings first (for Pydantic v2)
     from pydantic_settings import BaseSettings
@@ -128,6 +130,7 @@ class PipelineConfig(BaseSettings):
         description="Device for model inference (cpu, cuda, mps)"
     )
     
+    
     if PYDANTIC_V2:
         @field_validator('persist_directory')
         @classmethod
@@ -236,6 +239,104 @@ class SearchConfig(BaseSettings):
     else:
         class Config:
             env_prefix = "SEARCH_"
+            env_file = ".env"
+            case_sensitive = False
+
+
+class ContentAnalyticsConfig(BaseSettings):
+    """Configuration for content analytics processing."""
+    
+    enabled: bool = Field(
+        default=True,
+        description="Enable content analytics processing"
+    )
+    entities_db_path: str = Field(
+        default="src/html_rag/data/entities_db.json",
+        description="Path to entities database file"
+    )
+    controversy_threshold: float = Field(
+        default=0.6,
+        description="Controversy detection threshold (0.0-1.0)",
+        ge=0.0,
+        le=1.0
+    )
+    sentiment_model: str = Field(
+        default="cardiffnlp/twitter-roberta-base-sentiment-latest",
+        description="Sentiment analysis model"
+    )
+    classification_model: str = Field(
+        default="facebook/bart-large-mnli",
+        description="Zero-shot classification model"
+    )
+    ukrainian_model: str = Field(
+        default="lang-uk/roberta-base-uk",
+        description="Ukrainian language model"
+    )
+    enable_topic_classification: bool = Field(
+        default=True,
+        description="Enable topic classification"
+    )
+    enable_trend_analysis: bool = Field(
+        default=True,
+        description="Enable trend analysis over time"
+    )
+    enable_readability_analysis: bool = Field(
+        default=True,
+        description="Enable readability and complexity analysis"
+    )
+    cache_results: bool = Field(
+        default=True,
+        description="Cache analytics results"
+    )
+    batch_size: int = Field(
+        default=32,
+        description="Batch size for analytics processing",
+        ge=1,
+        le=256
+    )
+    supported_languages: List[str] = Field(
+        default_factory=lambda: ["uk", "ru", "en"],
+        description="Supported languages for analysis"
+    )
+    min_confidence_threshold: float = Field(
+        default=0.5,
+        description="Minimum confidence threshold for results",
+        ge=0.0,
+        le=1.0
+    )
+    enable_entity_linking: bool = Field(
+        default=True,
+        description="Enable entity linking and relationship detection"
+    )
+    max_entities_per_document: int = Field(
+        default=50,
+        description="Maximum entities to extract per document",
+        ge=1,
+        le=200
+    )
+    
+    if PYDANTIC_V2:
+        @field_validator('entities_db_path')
+        @classmethod
+        def validate_entities_db_path(cls, v):
+            """Ensure entities database directory exists."""
+            Path(v).parent.mkdir(parents=True, exist_ok=True)
+            return v
+        
+        model_config = ConfigDict(
+            env_prefix='ANALYTICS_',
+            env_file='.env',
+            case_sensitive=False
+        )
+    else:
+        @validator('entities_db_path')
+        def validate_entities_db_path(cls, v):
+            """Ensure entities database directory exists."""
+            Path(v).parent.mkdir(parents=True, exist_ok=True)
+            return v
+        
+        class Config:
+            env_prefix = "ANALYTICS_"
             env_file = ".env"
             case_sensitive = False
 

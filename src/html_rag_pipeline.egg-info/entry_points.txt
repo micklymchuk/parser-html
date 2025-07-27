@@ -1,0 +1,2 @@
+[console_scripts]
+html-rag = html_rag.cli.main:main
