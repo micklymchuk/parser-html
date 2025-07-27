@@ -39,8 +39,7 @@ COPY tests/ ./tests/
 COPY examples/ ./examples/
 COPY .pre-commit-config.yaml ./
 
-# Set up pre-commit hooks
-RUN pre-commit install
+# Note: pre-commit hooks are set up in local development, not in containers
 
 USER htmlrag
 EXPOSE 8000

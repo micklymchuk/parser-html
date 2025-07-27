@@ -77,11 +77,11 @@ all = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/html-rag-pipeline"
+Homepage = "https://github.com/html-rag-pipeline/html-rag-pipeline"
 Documentation = "https://html-rag-pipeline.readthedocs.io/"
-Repository = "https://github.com/yourusername/html-rag-pipeline.git"
-"Bug Reports" = "https://github.com/yourusername/html-rag-pipeline/issues"
-"Feature Requests" = "https://github.com/yourusername/html-rag-pipeline/issues"
+Repository = "https://github.com/html-rag-pipeline/html-rag-pipeline.git"
+"Bug Reports" = "https://github.com/html-rag-pipeline/html-rag-pipeline/issues"
+"Feature Requests" = "https://github.com/html-rag-pipeline/html-rag-pipeline/issues"
 
 [project.scripts]
 html-rag = "html_rag.cli.main:main"

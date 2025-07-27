@@ -436,4 +436,32 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
+
+🔍 Available Search Commands:
+
+# Basic search
+python3 wayback_search_example.py "ваш запит" \
+--collection wayback_sluga_narodu \
+--db-dir ./wayback_sluga_narodu_db
+
+# Ukrainian optimized search
+python3 wayback_search_example.py "партія OR Зеленський OR Україна" \
+--collection wayback_sluga_narodu \
+--db-dir ./wayback_sluga_narodu_db \
+--ukrainian
+
+# Interactive search session
+python3 wayback_search_example.py \
+--collection wayback_sluga_narodu \
+--db-dir ./wayback_sluga_narodu_db \
+--interactive
+
+# Domain-specific search
+python3 wayback_search_example.py "політика" \
+--collection wayback_sluga_narodu \
+--db-dir ./wayback_sluga_narodu_db \
+--domain sluga-narodu.com \
+--year 2020
+
+
 **Made with ❤️ for the RAG community**
