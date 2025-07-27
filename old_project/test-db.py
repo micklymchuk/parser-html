@@ -8,7 +8,7 @@ pipeline = RAGPipeline(
 stats = pipeline.get_pipeline_stats()
 print(f"Documents in DB: {stats['vector_store']['document_count']}")
 # Шукати без повторного завантаження
-all_results = pipeline.search("Ананченко", n_results=20)
+all_results = pipeline.search("цитата", n_results=20)
 for i, result in enumerate(all_results):
     print(f"{i+1}. Score: {result['similarity_score']:.3f}")
     print(f"   Text: {result['text']}")
