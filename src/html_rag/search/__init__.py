@@ -2,6 +2,6 @@
 Search modules for HTML RAG Pipeline.
 """
 
-from .topic_aware_search import TopicAwareSearcher
+from ..search.topic_aware_search import SimplifiedTopicSearcher, ContradictionAnalyzer
 
-__all__ = ['TopicAwareSearcher']
+__all__ = ['SimplifiedTopicSearcher', 'ContradictionAnalyzer']  # ОБНОВЛЕННЫЙ СПИСОК
