@@ -8,7 +8,6 @@ import os
 
 try:
     # Try pydantic-settings first (for Pydantic v2)
-    from pydantic_settings import BaseSettings
     from pydantic import BaseModel, Field, field_validator, ConfigDict
     PYDANTIC_V2 = True
 except ImportError:
@@ -51,6 +50,34 @@ except ImportError:
 
 class PipelineConfig(BaseSettings):
     """Main configuration for the HTML RAG Pipeline."""
+    
+    # Semantic Chunking configurations
+    use_semantic_chunking: bool = Field(
+        default=True,
+        description="Use semantic chunking instead of character-based chunking"
+    )
+    semantic_similarity_threshold: float = Field(
+        default=0.5,
+        description="Similarity threshold for semantic chunk boundaries (0.0-1.0)",
+        ge=0.0,
+        le=1.0
+    )
+    semantic_chunking_model: str = Field(
+        default="all-mpnet-base-v2",
+        description="Model name for semantic chunking embeddings"
+    )
+    max_semantic_chunk_size: int = Field(
+        default=2000,
+        description="Maximum characters per semantic chunk (fallback limit)",
+        ge=100,
+        le=5000
+    )
+    min_semantic_chunk_size: int = Field(
+        default=50,
+        description="Minimum characters per semantic chunk",
+        ge=10,
+        le=500
+    )
     
     # Model configurations
     html_pruner_model: str = Field(
@@ -282,23 +309,36 @@ DEFAULT_CONFIGS = {
     "ukrainian": PipelineConfig(
         prefer_basic_cleaning=True,
         cyrillic_detection_threshold=0.1,
-        collection_name="ukrainian_documents"
+        collection_name="ukrainian_documents",
+        use_semantic_chunking=True,
+        semantic_similarity_threshold=0.4,  # Lower threshold for Ukrainian (more granular)
+        semantic_chunking_model="all-mpnet-base-v2"
     ),
     "english": PipelineConfig(
         prefer_basic_cleaning=False,
         cyrillic_detection_threshold=0.5,
-        collection_name="english_documents"
+        collection_name="english_documents",
+        use_semantic_chunking=True,
+        semantic_similarity_threshold=0.5,
+        semantic_chunking_model="all-mpnet-base-v2"
     ),
     "wayback": PipelineConfig(
         prefer_basic_cleaning=True,
         cyrillic_detection_threshold=0.1,
-        collection_name="wayback_documents"
+        collection_name="wayback_documents",
+        use_semantic_chunking=True,
+        semantic_similarity_threshold=0.4,
+        semantic_chunking_model="all-mpnet-base-v2"
     ),
     "performance": PipelineConfig(
         batch_size=64,
         num_workers=8,
         max_chunk_size=1024,
-        enable_metrics=True
+        enable_metrics=True,
+        use_semantic_chunking=True,
+        semantic_similarity_threshold=0.6,  # Higher threshold for performance
+        max_semantic_chunk_size=3000,
+        semantic_chunking_model="all-mpnet-base-v2"
     )
 }
 

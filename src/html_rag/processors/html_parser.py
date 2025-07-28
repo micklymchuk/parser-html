@@ -6,6 +6,7 @@ import logging
 from typing import List, Dict, Any, Optional
 from bs4 import BeautifulSoup, Tag, NavigableString
 import re
+from .semantic_chunker import SemanticChunker
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -14,9 +15,27 @@ logger = logging.getLogger(__name__)
 class HTMLParser:
     """HTML Parser that extracts text blocks with metadata from cleaned HTML."""
     
-    def __init__(self):
-        """Initialize the HTML Parser."""
-        self.position_counter = 0
+    def __init__(self, config=None):
+        """
+        Initialize HTML Parser with semantic chunking capabilities.
+        
+        Args:
+            config: Pipeline configuration object
+        """
+        self.config = config
+        
+        # Initialize semantic chunker if enabled
+        if config and getattr(config, 'use_semantic_chunking', True):
+            self.semantic_chunker = SemanticChunker(
+                model_name=getattr(config, 'semantic_chunking_model', 'all-mpnet-base-v2'),
+                similarity_threshold=getattr(config, 'semantic_similarity_threshold', 0.5),
+                max_chunk_size=getattr(config, 'max_semantic_chunk_size', 2000),
+                min_chunk_size=getattr(config, 'min_semantic_chunk_size', 50)
+            )
+            logger.info("HTMLParser initialized with semantic chunking enabled")
+        else:
+            self.semantic_chunker = None
+            logger.info("HTMLParser initialized with semantic chunking disabled")
     
     def parse_html(self, cleaned_html: str, url: str = "") -> List[Dict[str, Any]]:
         """
@@ -161,89 +180,29 @@ class HTMLParser:
     
     def chunk_long_text(self, text_blocks: List[Dict[str, Any]], max_chunk_size: int = 512) -> List[Dict[str, Any]]:
         """
-        Split long text blocks into smaller chunks for embedding.
+        Apply semantic chunking to text blocks.
         
         Args:
             text_blocks: List of text block dictionaries
-            max_chunk_size: Maximum number of characters per chunk
+            max_chunk_size: Legacy parameter (ignored in semantic chunking)
             
         Returns:
-            List of text blocks with long texts split into chunks
+            List of semantically chunked text blocks
         """
-        chunked_blocks = []
-        
-        for block in text_blocks:
-            text = block['text']
-            
-            if len(text) <= max_chunk_size:
-                chunked_blocks.append(block)
-            else:
-                # Split long text into chunks
-                chunks = self._split_text_into_chunks(text, max_chunk_size)
-                
-                for i, chunk in enumerate(chunks):
-                    chunked_block = block.copy()
-                    chunked_block['text'] = chunk
-                    chunked_block['chunk_index'] = i
-                    chunked_block['total_chunks'] = len(chunks)
-                    chunked_blocks.append(chunked_block)
-        
-        logger.info(f"Text chunking completed. {len(text_blocks)} blocks became {len(chunked_blocks)} chunks")
-        return chunked_blocks
-    
-    def _split_text_into_chunks(self, text: str, max_size: int) -> List[str]:
-        """
-        Split text into chunks, trying to preserve sentence boundaries.
-        
-        Args:
-            text: Text to split
-            max_size: Maximum size per chunk
-            
-        Returns:
-            List of text chunks
-        """
-        if len(text) <= max_size:
-            return [text]
-        
-        chunks = []
-        sentences = re.split(r'[.!?]+', text)
-        
-        current_chunk = ""
-        for sentence in sentences:
-            sentence = sentence.strip()
-            if not sentence:
-                continue
-                
-            # Add sentence ending punctuation back
-            if not sentence.endswith(('.', '!', '?')):
-                sentence += '.'
-            
-            # Check if adding this sentence would exceed max_size
-            if len(current_chunk) + len(sentence) + 1 <= max_size:
-                current_chunk += sentence + " "
-            else:
-                # Save current chunk and start new one
-                if current_chunk:
-                    chunks.append(current_chunk.strip())
-                
-                # If single sentence is too long, split it
-                if len(sentence) > max_size:
-                    words = sentence.split()
-                    word_chunk = ""
-                    for word in words:
-                        if len(word_chunk) + len(word) + 1 <= max_size:
-                            word_chunk += word + " "
-                        else:
-                            if word_chunk:
-                                chunks.append(word_chunk.strip())
-                            word_chunk = word + " "
-                    if word_chunk:
-                        current_chunk = word_chunk
-                else:
-                    current_chunk = sentence + " "
-        
-        # Add final chunk
-        if current_chunk:
-            chunks.append(current_chunk.strip())
-        
-        return chunks
+        if self.semantic_chunker:
+            # Use semantic chunking
+            chunked_blocks = self.semantic_chunker.chunk_text_blocks(text_blocks)
+            logger.info(f"Semantic chunking completed. {len(text_blocks)} blocks became {len(chunked_blocks)} chunks")
+            return chunked_blocks
+        else:
+            # Fallback: return original blocks without chunking
+            logger.warning("Semantic chunking disabled. Returning original text blocks.")
+            for i, block in enumerate(text_blocks):
+                block.update({
+                    'chunk_index': 0,
+                    'total_chunks': 1,
+                    'semantic_similarity': 1.0,
+                    'topic_boundary': True,
+                    'chunk_method': 'none'
+                })
+            return text_blocks
