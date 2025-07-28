@@ -1,10 +1,11 @@
 """
-Main RAG Pipeline that orchestrates all 5 stages:
+Main RAG Pipeline that orchestrates all 6 stages:
 0. Wayback Snapshot Processing (optional)
 1. HTML Pruning
-2. HTML Parsing  
-3. Text Embedding
-4. ChromaDB Storage
+2. HTML Parsing
+3. Topic Analysis
+4. Text Embedding
+5. ChromaDB Storage
 
 Enhanced with modern Python practices, comprehensive error handling, and metrics.
 """
@@ -16,8 +17,10 @@ from pathlib import Path
 from ..processors.wayback import WaybackProcessor
 from ..processors.html_pruner import HTMLPruner
 from ..processors.html_parser import HTMLParser
+from ..processors.topic_analyzer import TopicAnalyzer
 from ..processors.text_embedder import TextEmbedder
 from ..processors.vector_store import VectorStore
+from ..search.topic_aware_search import TopicAwareSearcher
 from ..core.config import PipelineConfig, WaybackConfig, SearchConfig
 from ..utils.logging import PipelineLogger
 from ..utils.metrics import MetricsCollector, track_stage, track_processing
@@ -104,13 +107,22 @@ class RAGPipeline:
             # Stage 2: HTML Parser
             self.html_parser = HTMLParser()
             
-            # Stage 3: Text Embedder
+            # Stage 3: Topic Analyzer
+            self.topic_analyzer = TopicAnalyzer()
+            
+            # Stage 4: Text Embedder
             self.text_embedder = TextEmbedder(model_name=config.embedding_model)
             
-            # Stage 4: Vector Store
+            # Stage 5: Vector Store
             self.vector_store = VectorStore(
                 collection_name=config.collection_name,
                 persist_directory=config.persist_directory
+            )
+            
+            # Topic-Aware Search System
+            self.topic_aware_searcher = TopicAwareSearcher(
+                vector_store=self.vector_store,
+                text_embedder=self.text_embedder
             )
             
             self.logger.info("RAG pipeline initialized successfully")
@@ -286,9 +298,32 @@ class RAGPipeline:
                     "chunked_blocks": len(chunked_blocks)
                 })
 
-            # Stage 3: Text Embedding
-            with track_stage(self.metrics_collector, "stage3_embedding") if self.metrics_collector else nullcontext():
-                self.logger.log_stage_start("Stage 3: Text Embedding")
+            # Stage 3: Topic Analysis
+            with track_stage(self.metrics_collector, "stage3_topic_analysis") if self.metrics_collector else nullcontext():
+                self.logger.log_stage_start("Stage 3: Topic Analysis")
+                
+                try:
+                    # Analyze topics for each chunk
+                    topic_analyzed_blocks = self.topic_analyzer.analyze_batch(chunked_blocks)
+                    topics_found = sum(1 for block in topic_analyzed_blocks 
+                                     if block.get('topic_analysis', {}).get('topics'))
+                    
+                    self.logger.log_stage_end("Stage 3: Topic Analysis", {
+                        "analyzed_blocks": len(topic_analyzed_blocks),
+                        "blocks_with_topics": topics_found
+                    })
+                    
+                    # Use topic-analyzed blocks for next stage
+                    chunked_blocks = topic_analyzed_blocks
+                    
+                except Exception as e:
+                    # If topic analysis fails, continue without topics
+                    self.logger.warning(f"Topic analysis failed, continuing without topics: {str(e)}")
+                    # chunked_blocks remains unchanged
+
+            # Stage 4: Text Embedding
+            with track_stage(self.metrics_collector, "stage4_embedding") if self.metrics_collector else nullcontext():
+                self.logger.log_stage_start("Stage 4: Text Embedding")
                 
                 if not chunked_blocks:
                     self._record_processing_failure(
@@ -308,21 +343,21 @@ class RAGPipeline:
                 except Exception as e:
                     raise EmbeddingError(f"Text embedding failed: {str(e)}")
                 
-                self.logger.log_stage_end("Stage 3: Text Embedding", {
+                self.logger.log_stage_end("Stage 4: Text Embedding", {
                     "embedded_blocks": len(embedded_blocks),
                     "embedding_dimension": self.text_embedder.embedding_dimension
                 })
 
-            # Stage 4: ChromaDB Storage
-            with track_stage(self.metrics_collector, "stage4_storage") if self.metrics_collector else nullcontext():
-                self.logger.log_stage_start("Stage 4: ChromaDB Storage")
+            # Stage 5: ChromaDB Storage
+            with track_stage(self.metrics_collector, "stage5_storage") if self.metrics_collector else nullcontext():
+                self.logger.log_stage_start("Stage 5: ChromaDB Storage")
                 
                 try:
                     self.vector_store.add_documents(embedded_blocks)
                 except Exception as e:
                     raise VectorStoreError(f"Vector storage failed: {str(e)}")
                 
-                self.logger.log_stage_end("Stage 4: ChromaDB Storage", {
+                self.logger.log_stage_end("Stage 5: ChromaDB Storage", {
                     "documents_stored": len(embedded_blocks)
                 })
 
@@ -539,6 +574,67 @@ class RAGPipeline:
         return self.vector_store.filter_by_metadata(metadata_filter, limit)
     
     @handle_pipeline_error
+    def topic_aware_search(
+        self,
+        query: str,
+        n_results: int = 10,
+        **kwargs
+    ) -> List[Dict[str, Any]]:
+        """
+        Perform topic-aware search using Llama for intelligent query analysis.
+        
+        This method uses Llama to understand the user's intent and search strategy,
+        then applies appropriate filtering and ranking based on topic analysis.
+        
+        Args:
+            query: Natural language search query in Ukrainian
+            n_results: Number of results to return
+            **kwargs: Additional search parameters
+            
+        Returns:
+            List of relevant documents with enhanced context and relevance scoring
+            
+        Examples:
+            >>> pipeline.topic_aware_search("знайди суперечності Тимошенко про приватизацію")
+            >>> pipeline.topic_aware_search("покажи зміни позиції щодо освіти")
+            >>> pipeline.topic_aware_search("що говорив про економіку в 2024 році")
+            
+        Raises:
+            ValidationError: If query parameters are invalid
+            PipelineError: If search operation fails
+        """
+        try:
+            # Validate query
+            if not query or not isinstance(query, str):
+                raise ValidationError("Query must be a non-empty string")
+            
+            if not isinstance(n_results, int) or n_results < 1:
+                raise ValidationError("n_results must be a positive integer")
+            
+            self.logger.info(f"Starting topic-aware search for: '{query[:100]}{'...' if len(query) > 100 else ''}'")
+            
+            # Perform topic-aware search
+            results = self.topic_aware_searcher.topic_aware_search(
+                query=query,
+                n_results=n_results,
+                **kwargs
+            )
+            
+            self.logger.info(f"Topic-aware search completed: found {len(results)} results")
+            return results
+            
+        except ValidationError:
+            raise
+        except Exception as e:
+            self.logger.error(f"Topic-aware search failed: {str(e)}")
+            # Fallback to regular search
+            try:
+                self.logger.info("Falling back to regular semantic search")
+                return self.search(query, n_results)
+            except Exception as fallback_error:
+                raise PipelineError(f"Both topic-aware and fallback search failed: {str(e)}, {str(fallback_error)}") from e
+    
+    @handle_pipeline_error
     def process_wayback_snapshots(
         self, 
         snapshots_directory: str, 
@@ -546,7 +642,7 @@ class RAGPipeline:
         **filter_kwargs
     ) -> List[Dict[str, Any]]:
         """
-        Process Wayback Machine snapshots from a directory (Stage 0 + Stages 1-4).
+        Process Wayback Machine snapshots from a directory (Stage 0 + Stages 1-5).
         
         Args:
             snapshots_directory: Path to directory containing wayback snapshots
@@ -594,7 +690,7 @@ class RAGPipeline:
                 "snapshots_found": len(snapshots)
             })
             
-            # Process through remaining stages (1-4)
+            # Process through remaining stages (1-5)
             results = self.process_multiple_html(
                 snapshots, 
                 force_basic_cleaning=wayback_config.force_basic_cleaning
@@ -675,6 +771,8 @@ class RAGPipeline:
                 'vector_store': self.vector_store.get_collection_stats(),
                 'embedding_model': self.text_embedder.get_model_info(),
                 'html_pruner_model': self.html_pruner.model_name,
+                'topic_analyzer': self.topic_analyzer.get_service_info(),
+                'topic_aware_search': self.topic_aware_searcher.get_search_stats(),
                 'wayback_processor': 'Available',
                 'config': self.config.dict(),
                 'pipeline_version': '2.0.0'

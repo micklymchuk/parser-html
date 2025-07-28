@@ -7,7 +7,7 @@ from html_rag import create_pipeline
 
 # ========== ЗМІНІТЬ ЦЕ ==========
 DB_PATH = "./database"           # Шлях до бази даних
-SEARCH_QUERY = "що наша мета"      # Що шукати
+SEARCH_QUERY = "знайди хто проти приватизації"      # Що шукати
 # ==============================
 
 def main():
@@ -18,9 +18,9 @@ def main():
     pipeline = create_pipeline(db_path=DB_PATH)
 
     # Шукаємо (без обмежень, всі результати)
-    results = pipeline.search(
+    results = pipeline.topic_aware_search(
         query=SEARCH_QUERY,
-        n_results=100             # Максимум результатів
+        n_results=10             # Максимум результатів
     )
 
     print(f"\n📋 Знайдено {len(results)} результатів:\n")
@@ -36,6 +36,7 @@ def main():
         print(f"Схожість: {score:.3f}")
         print(f"Джерело: {source}")
         print(f"Текст: {text}")
+        print(f"Metadata: {metadata}")
         print("-" * 50)
 
 if __name__ == "__main__":
