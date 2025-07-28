@@ -9,6 +9,7 @@ import os
 try:
     # Try pydantic-settings first (for Pydantic v2)
     from pydantic import BaseModel, Field, field_validator, ConfigDict
+    from pydantic_settings import BaseSettings
     PYDANTIC_V2 = True
 except ImportError:
     try:
