@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 _pycache_/
 *.py[cod]
 *$py.class
@@ -32,3 +33,6 @@ ENV/
 Thumbs.db
 logs/
 *.log
+=======
+/chroma_db/
+>>>>>>> origin/feature/analytics-v2
