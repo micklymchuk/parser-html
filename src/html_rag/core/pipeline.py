@@ -102,7 +102,7 @@ class RAGPipeline:
             self.html_pruner = HTMLPruner(model_name=config.html_pruner_model)
             
             # Stage 2: HTML Parser
-            self.html_parser = HTMLParser()
+            self.html_parser = HTMLParser(config=config)
             
             # Stage 3: Text Embedder
             self.text_embedder = TextEmbedder(model_name=config.embedding_model)
